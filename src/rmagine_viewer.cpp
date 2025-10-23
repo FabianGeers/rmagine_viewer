@@ -226,7 +226,8 @@ int main(int argc, char** argv)
   using ResultT = rm::Bundle<
       rm::Hits<rm::RAM>,
       rm::Ranges<rm::RAM>,
-      rm::Points<rm::RAM>
+      rm::Points<rm::RAM>,
+      rm::Normals<rm::RAM>
   >;
 
   polyscope::PointCloud* poly_pcl = nullptr;
@@ -392,6 +393,7 @@ int main(int argc, char** argv)
 
 
     std::vector<rm::Point> points_filtered;
+    std::vector<rm::Vector3> normals_filtered;
     {
       // actual simulation    
       ResultT results;
@@ -410,6 +412,7 @@ int main(int argc, char** argv)
         if(results.hits[i] > 0)
         {
           points_filtered.push_back(results.points[i]);
+          normals_filtered.push_back(results.normals[i]);
         }
       }
       // std::cout << "Render " << points_filtered.size() << " points" << std::endl;
@@ -422,6 +425,8 @@ int main(int argc, char** argv)
       poly_pcl = polyscope::registerPointCloud("Sensor", points_filtered);
       // choosing quads as default since it allows to render more points 
       poly_pcl->setPointRenderMode(polyscope::PointRenderMode::Quad);
+      // add normals
+      poly_pcl->addVectorQuantity("Normals", normals_filtered, polyscope::VectorType::STANDARD);
     } 
     else if(points_filtered.size() != poly_pcl->nPoints())
     {
@@ -429,11 +434,15 @@ int main(int argc, char** argv)
       auto T = poly_pcl->getTransform();
       poly_pcl = polyscope::registerPointCloud("Sensor", points_filtered);
       poly_pcl->setTransform(T);
+      // add normals
+      poly_pcl->addVectorQuantity("Normals", normals_filtered, polyscope::VectorType::STANDARD);
     }
     else
     {
       // update existing PCL
       poly_pcl->updatePointPositions(points_filtered);
+      // add normals
+      poly_pcl->addVectorQuantity("Normals", normals_filtered, polyscope::VectorType::STANDARD);
     }
 
     polyscope::frameTick(); // renders one UI frame, returns immediately
