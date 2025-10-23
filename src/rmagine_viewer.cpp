@@ -20,6 +20,13 @@
 
 #include "portable-file-dialogs.h"
 
+
+//embree as default
+#if !defined(WITH_OPTIX) && !defined(WITH_VULKAN) && !defined(WITH_EMBREE)
+  #define WITH_EMBREE
+#endif
+
+
 namespace rm = rmagine;
 
 rm::EmbreeMapPtr generate_default_map()
