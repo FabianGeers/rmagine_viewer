@@ -1,14 +1,39 @@
 
 #include <array>
 
-#include <rmagine/simulation/SphereSimulatorEmbree.hpp>
-#include <rmagine/simulation/PinholeSimulatorEmbree.hpp>
-#include <rmagine/simulation/O1DnSimulatorEmbree.hpp>
-#include <rmagine/simulation/OnDnSimulatorEmbree.hpp>
+// #define WITH_OPTIX
+//embree as default
+#if !defined(WITH_OPTIX) && !defined(WITH_VULKAN) && !defined(WITH_EMBREE)
+  #define WITH_EMBREE
+#endif
+
+
+#if defined(WITH_EMBREE)
+  #include <rmagine/simulation/SphereSimulatorEmbree.hpp>
+  #include <rmagine/simulation/PinholeSimulatorEmbree.hpp>
+  #include <rmagine/simulation/O1DnSimulatorEmbree.hpp>
+  #include <rmagine/simulation/OnDnSimulatorEmbree.hpp>
+  #include <rmagine/map/EmbreeMap.hpp>
+  #include <rmagine/map/embree/embree_shapes.h>
+#elif defined(WITH_OPTIX)
+  #include <rmagine/simulation/SphereSimulatorOptix.hpp>
+  #include <rmagine/simulation/PinholeSimulatorOptix.hpp>
+  #include <rmagine/simulation/O1DnSimulatorOptix.hpp>
+  #include <rmagine/simulation/OnDnSimulatorOptix.hpp>
+  #include <rmagine/map/OptixMap.hpp>
+  #include <rmagine/map/optix/optix_shapes.h>
+#elif defined(WITH_VULKAN)
+  #include <rmagine/simulation/SphereSimulatorVulkan.hpp>
+  #include <rmagine/simulation/PinholeSimulatorVulkan.hpp>
+  #include <rmagine/simulation/O1DnSimulatorVulkan.hpp>
+  #include <rmagine/simulation/OnDnSimulatorVulkan.hpp>
+  #include <rmagine/map/VulkanMap.hpp>
+  #include <rmagine/map/vulkan/vulkan_shapes.hpp>
+#else
+  #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+#endif
 
 #include <rmagine/types/sensors.h>
-#include <rmagine/map/EmbreeMap.hpp>
-#include <rmagine/map/embree/embree_shapes.h>
 #include <rmagine/types/mesh_types.h>
 #include <rmagine/math/linalg.h>
 
@@ -21,34 +46,74 @@
 #include "portable-file-dialogs.h"
 
 
-//embree as default
-#if !defined(WITH_OPTIX) && !defined(WITH_VULKAN) && !defined(WITH_EMBREE)
-  #define WITH_EMBREE
-#endif
-
-
 namespace rm = rmagine;
 
-rm::EmbreeMapPtr generate_default_map()
-{
-  rm::EmbreeScenePtr scene = std::make_shared<rm::EmbreeScene>();
-  rm::EmbreeMeshPtr object = std::make_shared<rm::EmbreeCube>(1.0);
+#if defined(WITH_EMBREE)
+  rm::EmbreeMapPtr generate_default_map()
+  {
+    rm::EmbreeScenePtr scene = std::make_shared<rm::EmbreeScene>();
+    rm::EmbreeMeshPtr object = std::make_shared<rm::EmbreeCube>(1.0);
 
-  { // positioning
-    rm::Transform T = rm::Transform::Identity();
-    T.t = {0.0, 0.0, 0.0};
-    object->setTransform(T);
-    rm::Vector3 scale = {1.0, 1.0, 1.0};
-    object->setScale(scale);
-    object->apply(); // apply transform related changes
+    { // positioning
+      rm::Transform T = rm::Transform::Identity();
+      T.t = {0.0, 0.0, 0.0};
+      object->setTransform(T);
+      rm::Vector3 scale = {1.0, 1.0, 1.0};
+      object->setScale(scale);
+      object->apply(); // apply transform related changes
+    }
+    object->name = "Cube";
+    object->commit(); // commit changes to cube
+    scene->add(object); // add cube to scene
+    scene->commit(); // commit scene
+
+    return std::make_shared<rm::EmbreeMap>(scene);
   }
-  object->name = "Cube";
-  object->commit(); // commit changes to sphere
-  scene->add(object); // add sphere to scene
-  scene->commit(); // commit scene
+#elif defined(WITH_OPTIX)
+  rm::OptixMapPtr generate_default_map()
+  {
+    rm::OptixScenePtr scene = std::make_shared<rm::OptixScene>();
+    rm::OptixMeshPtr object = std::make_shared<rm::OptixCube>(1.0);
 
-  return std::make_shared<rm::EmbreeMap>(scene);
-}
+    { // positioning
+      rm::Transform T = rm::Transform::Identity();
+      T.t = {0.0, 0.0, 0.0};
+      object->setTransform(T);
+      rm::Vector3 scale = {1.0, 1.0, 1.0};
+      object->setScale(scale);
+      object->apply(); // apply transform related changes
+    }
+    object->name = "Cube";
+    object->commit(); // commit changes to cube
+    scene->add(object); // add cube to scene
+    scene->commit(); // commit scene
+
+    return std::make_shared<rm::OptixMap>(scene);
+  }
+#elif defined(WITH_VULKAN)
+  rm::VulkanMapPtr generate_default_map()
+  {
+    rm::VulkanScenePtr scene = std::make_shared<rm::VulkanScene>();
+    rm::VulkanMeshPtr object = std::make_shared<rm::VulkanCube>(1.0);
+
+    { // positioning
+      rm::Transform T = rm::Transform::Identity();
+      T.t = {0.0, 0.0, 0.0};
+      object->setTransform(T);
+      rm::Vector3 scale = {1.0, 1.0, 1.0};
+      object->setScale(scale);
+      object->apply(); // apply transform related changes
+    }
+    object->name = "Cube";
+    object->commit(); // commit changes to cube
+    scene->add(object); // add cube to scene
+    scene->commit(); // commit scene
+
+    return std::make_shared<rm::VulkanMap>(scene);
+  }
+#else
+  #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+#endif
 
 rm::SphericalModel generate_default_spherical_model()
 {
@@ -95,51 +160,121 @@ rm::Matrix4x4 rm_from_glm(const glm::mat4x4& M)
 
 using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 
-PolyscopeScene polyscope_scene_from_rmagine(rm::EmbreeScenePtr rm_scene)
-{
-  PolyscopeScene ret;
-
-  for(auto [rm_id, rm_geom] : rm_scene->geometries())
+#if defined(WITH_EMBREE)
+  PolyscopeScene polyscope_scene_from_rmagine(rm::EmbreeScenePtr rm_scene)
   {
-    // convert rm mesh to polyscope
-    auto rm_mesh = std::dynamic_pointer_cast<rm::EmbreeMesh>(rm_geom);
-    if(rm_mesh)
+    PolyscopeScene ret;
+
+    for(auto [rm_id, rm_geom] : rm_scene->geometries())
     {
-      // mesh found! create new polyscope element
-      std::string poly_name = rm_mesh->name;
-      if(poly_name == "")
+      // convert rm mesh to polyscope
+      auto rm_mesh = std::dynamic_pointer_cast<rm::EmbreeMesh>(rm_geom);
+      if(rm_mesh)
       {
-        std::stringstream ss;
-        ss << "mesh" << rm_id;
-        poly_name = ss.str();
+        // mesh found! create new polyscope element
+        std::string poly_name = rm_mesh->name;
+        if(poly_name == "")
+        {
+          std::stringstream ss;
+          ss << "mesh" << rm_id;
+          poly_name = ss.str();
+        }
+        polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, rm_mesh->vertices(), rm_mesh->faces());
+        poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
+        poly_mesh->setTransparency(0.8);
+        ret[rm_id] = poly_mesh;
       }
-      polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, rm_mesh->vertices(), rm_mesh->faces());
-      poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
-      poly_mesh->setTransparency(0.8);
-      ret[rm_id] = poly_mesh;
+      //TODO: convert other things here... (not implemented yet)
     }
-    // convert other things here... (not implemented yet)
+
+    return ret;
   }
-
-  return ret;
-}
-
-void synchronize(const PolyscopeScene& poly_scene, rm::EmbreeScenePtr rm_scene)
-{
-  for(auto [rm_id, poly_mesh] : poly_scene)
+#elif defined(WITH_OPTIX)
+  PolyscopeScene polyscope_scene_from_rmagine(rm::OptixScenePtr rm_scene)
   {
-    auto rm_mesh = rm_scene->getAs<rm::EmbreeMesh>(rm_id);
-    rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
-    rm::Transform T;
-    rm::Vector scale;
-    rm::decompose(M, T, scale);
-    rm_mesh->setTransform(T);
-    rm_mesh->setScale(scale);
-    rm_mesh->apply();
-    rm_mesh->commit();
+    PolyscopeScene ret;
+
+    for(auto [rm_id, rm_geom] : rm_scene->geometries())
+    {
+      // convert rm mesh to polyscope
+      auto rm_mesh = std::dynamic_pointer_cast<rm::OptixMesh>(rm_geom);
+      if(rm_mesh)
+      {
+        // mesh found! create new polyscope element
+        std::string poly_name = rm_mesh->name;
+        if(poly_name == "")
+        {
+          std::stringstream ss;
+          ss << "mesh" << rm_id;
+          poly_name = ss.str();
+        }
+        rm::Memory<rm::Vector, rm::RAM> verticies(rm_mesh->vertices.size());
+        verticies = rm_mesh->vertices;
+        rm::Memory<rm::Face, rm::RAM> faces(rm_mesh->faces.size());
+        faces = rm_mesh->faces;
+        polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, verticies, faces);
+        poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
+        poly_mesh->setTransparency(0.8);
+        ret[rm_id] = poly_mesh;
+      }
+      //TODO: convert other things here... (not implemented yet)
+    }
+
+    return ret;
   }
-  rm_scene->commit();
-}
+#elif defined(WITH_VULKAN)
+  PolyscopeScene polyscope_scene_from_rmagine(rm::VulkanScenePtr rm_scene)
+  {
+    //TODO: will be a bit more complicated for vulkan 
+  }
+#else
+  #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+#endif
+
+#if defined(WITH_EMBREE)
+  void synchronize(const PolyscopeScene& poly_scene, rm::EmbreeScenePtr rm_scene)
+  {
+    for(auto [rm_id, poly_mesh] : poly_scene)
+    {
+      auto rm_mesh = rm_scene->getAs<rm::EmbreeMesh>(rm_id);
+      rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
+      rm::Transform T;
+      rm::Vector scale;
+      rm::decompose(M, T, scale);
+      rm_mesh->setTransform(T);
+      rm_mesh->setScale(scale);
+      rm_mesh->apply();
+      rm_mesh->commit();
+    }
+    rm_scene->commit();
+  }
+#elif defined(WITH_OPTIX)
+  void synchronize(const PolyscopeScene& poly_scene, rm::OptixScenePtr rm_scene)
+  {
+    //TODO: at best this only works for mesh scenes (amd not instance scenes)
+    auto geoms = rm_scene->geometries();
+    for(auto [rm_id, poly_mesh] : poly_scene)
+    {
+      auto rm_mesh = geoms.at(rm_id)->this_shared<rm::OptixMesh>();
+      rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
+      rm::Transform T;
+      rm::Vector scale;
+      rm::decompose(M, T, scale);
+      rm_mesh->setTransform(T);
+      rm_mesh->setScale(scale);
+      rm_mesh->apply();
+      rm_mesh->commit();
+    }
+    rm_scene->commit();
+  }
+#elif defined(WITH_VULKAN)
+  void synchronize(const PolyscopeScene& poly_scene, rm::VulkanScenePtr rm_scene)
+  {
+    //TODO
+  }
+#else
+  #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+#endif
 
 /**
  * Simple polyscope-based viewer that shows the basic simulation capabilities of the rmagine library
@@ -169,21 +304,65 @@ int main(int argc, char** argv)
   polyscope::options::automaticallyComputeSceneExtents = false;
 
   // scenes: rmagine (raycasting acceleration) and polyscope (rendering) 
-  rm::EmbreeMapPtr rm_map;
+  
+  #if defined(WITH_EMBREE)
+    rm::EmbreeMapPtr rm_map;
+  #elif defined(WITH_OPTIX)
+    rm::OptixMapPtr rm_map;
+  #elif defined(WITH_VULKAN)
+    rm::VulkanMapPtr rm_map;
+  #else
+    #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+  #endif
   PolyscopeScene poly_scene;
 
   // construct a simulator
-  rm::SphereSimulatorEmbree rm_spherical_sim;
-  rm::PinholeSimulatorEmbree rm_pinhole_sim;
-  rm::O1DnSimulatorEmbree rm_o1dn_sim;
-  rm::OnDnSimulatorEmbree rm_ondn_sim;
+  #if defined(WITH_EMBREE)
+    rm::SphereSimulatorEmbree rm_spherical_sim;
+    rm::PinholeSimulatorEmbree rm_pinhole_sim;
+    rm::O1DnSimulatorEmbree rm_o1dn_sim;
+    rm::OnDnSimulatorEmbree rm_ondn_sim;
+  #elif defined(WITH_OPTIX)
+    rm::SphereSimulatorOptix rm_spherical_sim;
+    rm::PinholeSimulatorOptix rm_pinhole_sim;
+    rm::O1DnSimulatorOptix rm_o1dn_sim;
+    rm::OnDnSimulatorOptix rm_ondn_sim;
+
+    rm::Transform Tsb = rm::Transform::Identity();
+    rm_spherical_sim.setTsb(Tsb);
+    rm_pinhole_sim.setTsb(Tsb);
+    rm_o1dn_sim.setTsb(Tsb);
+    rm_ondn_sim.setTsb(Tsb);
+  #elif defined(WITH_VULKAN)
+    rm::SphereSimulatorVulkan rm_spherical_sim;
+    rm::PinholeSimulatorVulkan rm_pinhole_sim;
+    rm::O1DnSimulatorVulkan rm_o1dn_sim;
+    rm::OnDnSimulatorVulkan rm_ondn_sim;
+
+    rm::Transform Tsb = rm::Transform::Identity();
+    rm_spherical_sim.setTsb(Tsb);
+    rm_pinhole_sim.setTsb(Tsb);
+    rm_o1dn_sim.setTsb(Tsb);
+    rm_ondn_sim.setTsb(Tsb);
+  #else
+    #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+  #endif
   
   if(argc < 2)
   {
     rm_map = generate_default_map();
-  } else {
-    // std::string lo
-    rm_map = rm::import_embree_map(argv[1]);
+  }
+  else
+  {
+    #if defined(WITH_EMBREE)
+      rm_map = rm::import_embree_map(argv[1]);
+    #elif defined(WITH_OPTIX)
+      rm_map = rm::import_optix_map(argv[1]);
+    #elif defined(WITH_VULKAN)
+      rm_map = rm::import_vulkan_map(argv[1]);
+    #else
+      #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+    #endif
   }
   
   rm_spherical_sim.setMap(rm_map);
@@ -191,7 +370,15 @@ int main(int argc, char** argv)
   rm_o1dn_sim.setMap(rm_map);
   rm_ondn_sim.setMap(rm_map);
 
-  poly_scene = polyscope_scene_from_rmagine(rm_map->scene);
+  #if defined(WITH_EMBREE)
+    poly_scene = polyscope_scene_from_rmagine(rm_map->scene);
+  #elif defined(WITH_OPTIX)
+    poly_scene = polyscope_scene_from_rmagine(rm_map->scene());
+  #elif defined(WITH_VULKAN)
+    poly_scene = polyscope_scene_from_rmagine(rm_map->scene());
+  #else
+    #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+  #endif
   
   rm::SphericalModel spherical_model = generate_default_spherical_model();
   rm::PinholeModel pinhole_model = generate_default_pinhole_model();
@@ -230,12 +417,30 @@ int main(int argc, char** argv)
   rm_ondn_sim.setModel(ondn_model);
   
 
-  using ResultT = rm::Bundle<
-      rm::Hits<rm::RAM>,
-      rm::Ranges<rm::RAM>,
-      rm::Points<rm::RAM>,
-      rm::Normals<rm::RAM>
-  >;
+  #if defined(WITH_EMBREE)
+    using ResultT = rm::Bundle<
+        rm::Hits<rm::RAM>,
+        rm::Ranges<rm::RAM>,
+        rm::Points<rm::RAM>,
+        rm::Normals<rm::RAM>
+    >;
+  #elif defined(WITH_OPTIX)
+    using ResultT = rm::Bundle<
+        rm::Hits<rm::VRAM_CUDA>,
+        rm::Ranges<rm::VRAM_CUDA>,
+        rm::Points<rm::VRAM_CUDA>,
+        rm::Normals<rm::VRAM_CUDA>
+    >;
+  #elif defined(WITH_VULKAN)
+    using ResultT = rm::Bundle<
+        rm::Hits<rm::DEVICE_LOCAL_VULKAN>,
+        rm::Ranges<rm::DEVICE_LOCAL_VULKAN>,
+        rm::Points<rm::DEVICE_LOCAL_VULKAN>,
+        rm::Normals<rm::DEVICE_LOCAL_VULKAN>
+    >;
+  #else
+    #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+  #endif
 
   polyscope::PointCloud* poly_pcl = nullptr;
 
@@ -363,7 +568,15 @@ int main(int argc, char** argv)
       {
         std::cout << "Loading scene from '" << selection[0] << "'" << std::endl;
         
-        rm_map = rm::import_embree_map(selection[0]);
+        #if defined(WITH_EMBREE)
+          rm_map = rm::import_embree_map(selection[0]);
+        #elif defined(WITH_OPTIX)
+          rm_map = rm::import_optix_map(selection[0]);
+        #elif defined(WITH_VULKAN)
+          rm_map = rm::import_vulkan_map(selection[0]);
+        #else
+          #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+        #endif
         rm_spherical_sim.setMap(rm_map);
         rm_pinhole_sim.setMap(rm_map);
         rm_o1dn_sim.setMap(rm_map);
@@ -374,7 +587,15 @@ int main(int argc, char** argv)
           polyscope::removeStructure(poly_mesh, true);
         }
         poly_scene.clear();
-        poly_scene = polyscope_scene_from_rmagine(rm_map->scene);
+        #if defined(WITH_EMBREE)
+          poly_scene = polyscope_scene_from_rmagine(rm_map->scene);
+        #elif defined(WITH_OPTIX)
+          poly_scene = polyscope_scene_from_rmagine(rm_map->scene());
+        #elif defined(WITH_VULKAN)
+          poly_scene = polyscope_scene_from_rmagine(rm_map->scene());
+        #else
+          #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+        #endif
       }
     }
   };
@@ -382,7 +603,15 @@ int main(int argc, char** argv)
   while(!polyscope::windowRequestsClose())
   {
     // synchronize acceleration structure
-    synchronize(poly_scene, rm_map->scene);
+    #if defined(WITH_EMBREE)
+      synchronize(poly_scene, rm_map->scene);
+    #elif defined(WITH_OPTIX)
+      synchronize(poly_scene, rm_map->scene());
+    #elif defined(WITH_VULKAN)
+      synchronize(poly_scene, rm_map->scene());
+    #else
+      #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+    #endif
 
     // update scanner transform
      // Transform from sensor to world, i.e. pose of the sensor
@@ -405,6 +634,7 @@ int main(int argc, char** argv)
       // actual simulation    
       ResultT results;
       if(model_selected == 0) {
+        //optix crashes here - idk why
         results = rm_spherical_sim.simulate<ResultT>(Tsw);
       } else if(model_selected == 1) {
         results = rm_pinhole_sim.simulate<ResultT>(Tsw);
@@ -414,14 +644,48 @@ int main(int argc, char** argv)
         results = rm_ondn_sim.simulate<ResultT>(Tsw);
       }
 
-      for(size_t i=0; i<results.points.size(); i++)
-      {
-        if(results.hits[i] > 0)
+      #if defined(WITH_EMBREE)
+        for(size_t i=0; i<results.points.size(); i++)
         {
-          points_filtered.push_back(results.points[i]);
-          normals_filtered.push_back(results.normals[i]);
+          if(results.hits[i] > 0)
+          {
+            points_filtered.push_back(results.points[i]);
+            normals_filtered.push_back(results.normals[i]);
+          }
         }
-      }
+      #elif defined(WITH_OPTIX)
+        rm::Memory<rm::Point, rm::RAM> points_ram(results.points.size());
+        points_ram = results.points;
+        rm::Memory<rm::Vector3, rm::RAM> normals_ram(results.normals.size());
+        normals_ram = results.normals;
+        rm::Memory<uint8_t, rm::RAM> hits_ram(results.hits.size());
+        hits_ram = results.hits;
+        for(size_t i=0; i<points_ram.size(); i++)
+        {
+          if(hits_ram[i] > 0)
+          {
+            points_filtered.push_back(points_ram[i]);
+            normals_filtered.push_back(normals_ram[i]);
+          }
+        }
+      #elif defined(WITH_VULKAN)
+        rm::Memory<rm::Point, rm::RAM> points_ram(results.points.size());
+        points_ram = results.points;
+        rm::Memory<rm::Vector3, rm::RAM> normals_ram(results.normals.size());
+        normals_ram = results.normals;
+        rm::Memory<uint8_t, rm::RAM> hits_ram(results.hits.size());
+        hits_ram = results.hits;
+        for(size_t i=0; i<points_ram.size(); i++)
+        {
+          if(hits_ram[i] > 0)
+          {
+            points_filtered.push_back(points_ram[i]);
+            normals_filtered.push_back(normals_ram[i]);
+          }
+        }
+      #else
+        #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+      #endif
       // std::cout << "Render " << points_filtered.size() << " points" << std::endl;
     }
     

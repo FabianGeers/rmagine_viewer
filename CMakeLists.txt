@@ -41,3 +41,13 @@ target_link_libraries(rmagine_viewer
     rmagine::embree
     rmagine::ouster
     portable_file_dialogs)
+
+add_executable(rmagine_viewer_optix src/rmagine_viewer.cpp)
+target_compile_definitions(rmagine_viewer_optix PUBLIC WITH_OPTIX)
+target_link_libraries(rmagine_viewer_optix
+    polyscope
+    rmagine::core
+    rmagine::cuda
+    rmagine::optix
+    rmagine::ouster
+    portable_file_dialogs)
