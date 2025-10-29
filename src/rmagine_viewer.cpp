@@ -199,7 +199,6 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 
     if(rm_scene->type() == rm::OptixSceneType::GEOMETRIES)
     {
-      std::cout << "1" << std::endl;
       for(auto [rm_id, rm_geom] : rm_scene->geometries())
       {
         // convert rm mesh to polyscope
@@ -228,7 +227,6 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
     }
     else if(rm_scene->type() == rm::OptixSceneType::INSTANCES)
     {
-      std::cout << "2" << std::endl;
       rm::IDGen gen;
       for(auto [rm_id, rm_geom] : rm_scene->geometries())
       {
@@ -244,7 +242,6 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
             poly_mesh->setTransform(inst_mat);
             unsigned int new_id = gen.get();
             ret[new_id] = poly_mesh;
-            std::cout << "placed at: " << new_id << ", " << poly_mesh->name << std::endl;
           }
         }
       }
@@ -254,7 +251,7 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
       throw std::runtime_error("unexpected scene type...");
     }
 
-    std::cout << "Number of meshes in poly scene: " << ret.size() << std::endl;
+    // std::cout << "Number of meshes in poly scene: " << ret.size() << std::endl;
 
     return ret;
   }
