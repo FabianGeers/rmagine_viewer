@@ -21,6 +21,7 @@
   #include <rmagine/simulation/O1DnSimulatorOptix.hpp>
   #include <rmagine/simulation/OnDnSimulatorOptix.hpp>
   #include <rmagine/map/OptixMap.hpp>
+  #include <rmagine/map/optix/OptixInst.hpp>
   #include <rmagine/map/optix/optix_shapes.h>
 #elif defined(WITH_VULKAN)
   #include <rmagine/simulation/SphereSimulatorVulkan.hpp>
@@ -192,33 +193,68 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 #elif defined(WITH_OPTIX)
   PolyscopeScene polyscope_scene_from_rmagine(rm::OptixScenePtr rm_scene)
   {
+    static unsigned int moifier = 0;
+
     PolyscopeScene ret;
 
-    for(auto [rm_id, rm_geom] : rm_scene->geometries())
+    if(rm_scene->type() == rm::OptixSceneType::GEOMETRIES)
     {
-      // convert rm mesh to polyscope
-      auto rm_mesh = std::dynamic_pointer_cast<rm::OptixMesh>(rm_geom);
-      if(rm_mesh)
+      std::cout << "1" << std::endl;
+      for(auto [rm_id, rm_geom] : rm_scene->geometries())
       {
-        // mesh found! create new polyscope element
-        std::string poly_name = rm_mesh->name;
-        if(poly_name == "")
+        // convert rm mesh to polyscope
+        auto rm_mesh = std::dynamic_pointer_cast<rm::OptixMesh>(rm_geom);
+        if(rm_mesh)
         {
-          std::stringstream ss;
-          ss << "mesh" << rm_id;
-          poly_name = ss.str();
+          // mesh found! create new polyscope element
+          std::string poly_name = rm_mesh->name;
+          if(poly_name == "")
+          {
+            std::stringstream ss;
+            ss << "mesh" << rm_id << "-" << moifier++;
+            poly_name = ss.str();
+          }
+          rm::Memory<rm::Vector, rm::RAM> verticies(rm_mesh->vertices.size());
+          verticies = rm_mesh->vertices;
+          rm::Memory<rm::Face, rm::RAM> faces(rm_mesh->faces.size());
+          faces = rm_mesh->faces;
+          polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, verticies, faces);
+          poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
+          poly_mesh->setTransparency(0.8);
+          ret[rm_id] = poly_mesh;
         }
-        rm::Memory<rm::Vector, rm::RAM> verticies(rm_mesh->vertices.size());
-        verticies = rm_mesh->vertices;
-        rm::Memory<rm::Face, rm::RAM> faces(rm_mesh->faces.size());
-        faces = rm_mesh->faces;
-        polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, verticies, faces);
-        poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
-        poly_mesh->setTransparency(0.8);
-        ret[rm_id] = poly_mesh;
+        //TODO: convert other things here... (not implemented yet)
       }
-      //TODO: convert other things here... (not implemented yet)
     }
+    else if(rm_scene->type() == rm::OptixSceneType::INSTANCES)
+    {
+      std::cout << "2" << std::endl;
+      rm::IDGen gen;
+      for(auto [rm_id, rm_geom] : rm_scene->geometries())
+      {
+        auto rm_inst = std::dynamic_pointer_cast<rm::OptixInst>(rm_geom);
+        if(rm_inst)
+        {
+          auto rm_inst_scene = rm_inst->scene();
+          auto inst_mat = glm_from_rm(rm_inst->matrix());
+
+          PolyscopeScene tmp = polyscope_scene_from_rmagine(rm_inst_scene);
+          for(auto [id, poly_mesh] : tmp)
+          {
+            poly_mesh->setTransform(inst_mat);
+            unsigned int new_id = gen.get();
+            ret[new_id] = poly_mesh;
+            std::cout << "placed at: " << new_id << ", " << poly_mesh->name << std::endl;
+          }
+        }
+      }
+    }
+    else
+    {
+      throw std::runtime_error("unexpected scene type...");
+    }
+
+    std::cout << "Number of meshes in poly scene: " << ret.size() << std::endl;
 
     return ret;
   }
@@ -252,20 +288,20 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
   void synchronize(const PolyscopeScene& poly_scene, rm::OptixScenePtr rm_scene)
   {
     //TODO: at best this only works for mesh scenes (amd not instance scenes)
-    auto geoms = rm_scene->geometries();
-    for(auto [rm_id, poly_mesh] : poly_scene)
-    {
-      auto rm_mesh = geoms.at(rm_id)->this_shared<rm::OptixMesh>();
-      rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
-      rm::Transform T;
-      rm::Vector scale;
-      rm::decompose(M, T, scale);
-      rm_mesh->setTransform(T);
-      rm_mesh->setScale(scale);
-      rm_mesh->apply();
-      rm_mesh->commit();
-    }
-    rm_scene->commit();
+    // auto geoms = rm_scene->geometries();
+    // for(auto [rm_id, poly_mesh] : poly_scene)
+    // {
+    //   auto rm_mesh = geoms.at(rm_id)->this_shared<rm::OptixMesh>();
+    //   rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
+    //   rm::Transform T;
+    //   rm::Vector scale;
+    //   rm::decompose(M, T, scale);
+    //   rm_mesh->setTransform(T);
+    //   rm_mesh->setScale(scale);
+    //   rm_mesh->apply();
+    //   rm_mesh->commit();
+    // }
+    // rm_scene->commit();
   }
 #elif defined(WITH_VULKAN)
   void synchronize(const PolyscopeScene& poly_scene, rm::VulkanScenePtr rm_scene)
@@ -304,7 +340,6 @@ int main(int argc, char** argv)
   polyscope::options::automaticallyComputeSceneExtents = false;
 
   // scenes: rmagine (raycasting acceleration) and polyscope (rendering) 
-  
   #if defined(WITH_EMBREE)
     rm::EmbreeMapPtr rm_map;
   #elif defined(WITH_OPTIX)
@@ -381,9 +416,9 @@ int main(int argc, char** argv)
   #endif
   
   rm::SphericalModel spherical_model = generate_default_spherical_model();
-  rm::PinholeModel pinhole_model = generate_default_pinhole_model();
-  rm::O1DnModel    o1dn_model = generate_default_o1dn_model();
-  rm::OnDnModel    ondn_model = generate_default_ondn_model();
+  rm::PinholeModel   pinhole_model = generate_default_pinhole_model();
+  rm::O1DnModel      o1dn_model = generate_default_o1dn_model();
+  rm::OnDnModel      ondn_model = generate_default_ondn_model();
 
 
   // Spherical model presets
@@ -410,12 +445,11 @@ int main(int argc, char** argv)
 
   int model_selected = 0;
 
-  // o1dn model 
+  // set models
   rm_spherical_sim.setModel(spherical_model);
   rm_pinhole_sim.setModel(pinhole_model);
   rm_o1dn_sim.setModel(o1dn_model);
   rm_ondn_sim.setModel(ondn_model);
-  
 
   #if defined(WITH_EMBREE)
     using ResultT = rm::Bundle<
@@ -633,16 +667,48 @@ int main(int argc, char** argv)
     {
       // actual simulation    
       ResultT results;
-      if(model_selected == 0) {
-        //optix crashes here - idk why
-        results = rm_spherical_sim.simulate<ResultT>(Tsw);
-      } else if(model_selected == 1) {
-        results = rm_pinhole_sim.simulate<ResultT>(Tsw);
-      } else if(model_selected == 2) {
-        results = rm_o1dn_sim.simulate<ResultT>(Tsw);
-      } else if(model_selected == 3) {
-        results = rm_ondn_sim.simulate<ResultT>(Tsw);
-      }
+      #if defined(WITH_EMBREE)
+        if(model_selected == 0) {
+          results = rm_spherical_sim.simulate<ResultT>(Tsw);
+        } else if(model_selected == 1) {
+          results = rm_pinhole_sim.simulate<ResultT>(Tsw);
+        } else if(model_selected == 2) {
+          results = rm_o1dn_sim.simulate<ResultT>(Tsw);
+        } else if(model_selected == 3) {
+          results = rm_ondn_sim.simulate<ResultT>(Tsw);
+        }
+      #elif defined(WITH_OPTIX)
+        //need to be done this way otherwise the simulator sefaults (idk why)
+        if(model_selected == 0) {
+          rm::resize_memory_bundle<rm::VRAM_CUDA, ResultT>(results, spherical_model.getWidth(), spherical_model.getHeight(), 1);
+          rm_spherical_sim.simulate<ResultT>(Tsw, results);
+        } else if(model_selected == 1) {
+          rm::resize_memory_bundle<rm::VRAM_CUDA, ResultT>(results, pinhole_model.getWidth(), pinhole_model.getHeight(), 1);
+          rm_pinhole_sim.simulate<ResultT>(Tsw, results);
+        } else if(model_selected == 2) {
+          rm::resize_memory_bundle<rm::VRAM_CUDA, ResultT>(results, o1dn_model.getWidth(), o1dn_model.getHeight(), 1);
+          rm_o1dn_sim.simulate<ResultT>(Tsw, results);
+        } else if(model_selected == 3) {
+          rm::resize_memory_bundle<rm::VRAM_CUDA, ResultT>(results, ondn_model.getWidth(), ondn_model.getHeight(), 1);
+          rm_ondn_sim.simulate<ResultT>(Tsw, results);
+        }
+      #elif defined(WITH_VULKAN)
+        if(model_selected == 0) {
+          rm::resize_memory_bundle(results, spherical_model.getWidth(), spherical_model.getHeight(), 1);
+          rm_spherical_sim.simulate(Tsw, results);
+        } else if(model_selected == 1) {
+          rm::resize_memory_bundle(results, pinhole_model.getWidth(), pinhole_model.getHeight(), 1);
+          rm_pinhole_sim.simulate(Tsw, results);
+        } else if(model_selected == 2) {
+          rm::resize_memory_bundle(results, o1dn_model.getWidth(), o1dn_model.getHeight(), 1);
+          rm_o1dn_sim.simulate(Tsw, results);
+        } else if(model_selected == 3) {
+          rm::resize_memory_bundle(results, ondn_model.getWidth(), ondn_model.getHeight(), 1);
+          rm_ondn_sim.simulate(Tsw, results);
+        }
+      #else
+        #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
+      #endif
 
       #if defined(WITH_EMBREE)
         for(size_t i=0; i<results.points.size(); i++)
