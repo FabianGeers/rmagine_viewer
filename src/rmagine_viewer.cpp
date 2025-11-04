@@ -193,7 +193,7 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 #elif defined(WITH_OPTIX)
   PolyscopeScene polyscope_scene_from_rmagine(rm::OptixScenePtr rm_scene)
   {
-    static unsigned int moifier = 0;
+    static rm::IDGen mesh_name_id;
 
     PolyscopeScene ret;
 
@@ -206,13 +206,10 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
         if(rm_mesh)
         {
           // mesh found! create new polyscope element
-          std::string poly_name = rm_mesh->name;
-          if(poly_name == "")
-          {
-            std::stringstream ss;
-            ss << "mesh" << rm_id << "-" << moifier++;
-            poly_name = ss.str();
-          }
+          std::stringstream ss;
+          ss << "mesh-" << rm_id << "-" << mesh_name_id.get();
+          std::string poly_name = ss.str();
+
           rm::Memory<rm::Vector, rm::RAM> verticies(rm_mesh->vertices.size());
           verticies = rm_mesh->vertices;
           rm::Memory<rm::Face, rm::RAM> faces(rm_mesh->faces.size());
@@ -222,7 +219,6 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
           poly_mesh->setTransparency(0.8);
           ret[rm_id] = poly_mesh;
         }
-        //TODO: convert other things here... (not implemented yet)
       }
     }
     else if(rm_scene->type() == rm::OptixSceneType::INSTANCES)
@@ -236,8 +232,8 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
           auto rm_inst_scene = rm_inst->scene();
           auto inst_mat = glm_from_rm(rm_inst->matrix());
 
-          PolyscopeScene tmp = polyscope_scene_from_rmagine(rm_inst_scene);
-          for(auto [id, poly_mesh] : tmp)
+          PolyscopeScene tmp_poly_scene = polyscope_scene_from_rmagine(rm_inst_scene);
+          for(auto [id, poly_mesh] : tmp_poly_scene)
           {
             poly_mesh->setTransform(inst_mat);
             unsigned int new_id = gen.get();
@@ -258,7 +254,63 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 #elif defined(WITH_VULKAN)
   PolyscopeScene polyscope_scene_from_rmagine(rm::VulkanScenePtr rm_scene)
   {
-    //TODO: will be a bit more complicated for vulkan 
+    static rm::IDGen mesh_name_id;
+
+    PolyscopeScene ret;
+
+    if(rm_scene->type() == rm::VulkanSceneType::GEOMETRIES)
+    {
+      for(auto [rm_id, rm_geom] : rm_scene->geometries())
+      {
+        // convert rm mesh to polyscope
+        auto rm_mesh = std::dynamic_pointer_cast<rm::VulkanMesh>(rm_geom);
+        if(rm_mesh)
+        {
+          // mesh found! create new polyscope element
+          std::stringstream ss;
+          ss << "mesh-" << rm_id << "-" << mesh_name_id.get();
+          std::string poly_name = ss.str();
+
+          rm::Memory<rm::Vector, rm::RAM> verticies(rm_mesh->vertices.size());
+          verticies = rm_mesh->vertices;
+          rm::Memory<rm::Face, rm::RAM> faces(rm_mesh->faces.size());
+          faces = rm_mesh->faces;
+          polyscope::SurfaceMesh* poly_mesh = polyscope::registerSurfaceMesh(poly_name, verticies, faces);
+          poly_mesh->setTransform(glm_from_rm(rm_mesh->matrix()));
+          poly_mesh->setTransparency(0.8);
+          ret[rm_id] = poly_mesh;
+        }
+      }
+    }
+    else if(rm_scene->type() == rm::VulkanSceneType::INSTANCES)
+    {
+      rm::IDGen gen;
+      for(auto [rm_id, rm_geom] : rm_scene->geometries())
+      {
+        auto rm_inst = std::dynamic_pointer_cast<rm::VulkanInst>(rm_geom);
+        if(rm_inst)
+        {
+          auto rm_inst_scene = rm_inst->scene();
+          auto inst_mat = glm_from_rm(rm_inst->matrix());
+
+          PolyscopeScene tmp_poly_scene = polyscope_scene_from_rmagine(rm_inst_scene);
+          for(auto [id, poly_mesh] : tmp_poly_scene)
+          {
+            poly_mesh->setTransform(inst_mat);
+            unsigned int new_id = gen.get();
+            ret[new_id] = poly_mesh;
+          }
+        }
+      }
+    }
+    else
+    {
+      throw std::runtime_error("unexpected scene type...");
+    }
+
+    // std::cout << "Number of meshes in poly scene: " << ret.size() << std::endl;
+
+    return ret;
   }
 #else
   #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
@@ -284,26 +336,14 @@ using PolyscopeScene = std::unordered_map<unsigned int, polyscope::Structure*>;
 #elif defined(WITH_OPTIX)
   void synchronize(const PolyscopeScene& poly_scene, rm::OptixScenePtr rm_scene)
   {
-    //TODO: at best this only works for mesh scenes (amd not instance scenes)
-    // auto geoms = rm_scene->geometries();
-    // for(auto [rm_id, poly_mesh] : poly_scene)
-    // {
-    //   auto rm_mesh = geoms.at(rm_id)->this_shared<rm::OptixMesh>();
-    //   rm::Matrix4x4 M = rm_from_glm(poly_mesh->getTransform());
-    //   rm::Transform T;
-    //   rm::Vector scale;
-    //   rm::decompose(M, T, scale);
-    //   rm_mesh->setTransform(T);
-    //   rm_mesh->setScale(scale);
-    //   rm_mesh->apply();
-    //   rm_mesh->commit();
-    // }
-    // rm_scene->commit();
+    //TODO: will be more complicated as it is not that easy to associate the polyscope mesh with its rmagine counterpart
+    //      probably not necessary for functuality, if the polyscope mesh does not get changed
   }
 #elif defined(WITH_VULKAN)
   void synchronize(const PolyscopeScene& poly_scene, rm::VulkanScenePtr rm_scene)
   {
-    //TODO
+    //TODO: will be more complicated as it is not that easy to associate the polyscope mesh with its rmagine counterpart
+    //      probably not necessary for functuality, if the polyscope mesh does not get changed
   }
 #else
   #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
@@ -413,9 +453,9 @@ int main(int argc, char** argv)
   #endif
   
   rm::SphericalModel spherical_model = generate_default_spherical_model();
-  rm::PinholeModel   pinhole_model = generate_default_pinhole_model();
-  rm::O1DnModel      o1dn_model = generate_default_o1dn_model();
-  rm::OnDnModel      ondn_model = generate_default_ondn_model();
+  rm::PinholeModel   pinhole_model   = generate_default_pinhole_model();
+  rm::O1DnModel      o1dn_model      = generate_default_o1dn_model();
+  rm::OnDnModel      ondn_model      = generate_default_ondn_model();
 
 
   // Spherical model presets
@@ -450,24 +490,21 @@ int main(int argc, char** argv)
 
   #if defined(WITH_EMBREE)
     using ResultT = rm::Bundle<
-        rm::Hits<rm::RAM>,
-        rm::Ranges<rm::RAM>,
-        rm::Points<rm::RAM>,
-        rm::Normals<rm::RAM>
+      rm::Hits<rm::RAM>,
+      rm::Points<rm::RAM>,
+      rm::Normals<rm::RAM>
     >;
   #elif defined(WITH_OPTIX)
     using ResultT = rm::Bundle<
-        rm::Hits<rm::VRAM_CUDA>,
-        rm::Ranges<rm::VRAM_CUDA>,
-        rm::Points<rm::VRAM_CUDA>,
-        rm::Normals<rm::VRAM_CUDA>
+      rm::Hits<rm::VRAM_CUDA>,
+      rm::Points<rm::VRAM_CUDA>,
+      rm::Normals<rm::VRAM_CUDA>
     >;
   #elif defined(WITH_VULKAN)
     using ResultT = rm::Bundle<
-        rm::Hits<rm::DEVICE_LOCAL_VULKAN>,
-        rm::Ranges<rm::DEVICE_LOCAL_VULKAN>,
-        rm::Points<rm::DEVICE_LOCAL_VULKAN>,
-        rm::Normals<rm::DEVICE_LOCAL_VULKAN>
+      rm::Hits<rm::DEVICE_LOCAL_VULKAN>,
+      rm::Points<rm::DEVICE_LOCAL_VULKAN>,
+      rm::Normals<rm::DEVICE_LOCAL_VULKAN>
     >;
   #else
     #error Either WITH_EMBREE or WITH_OPTIX or WITH_VULKAN has to be defined // compile time error
