@@ -10,8 +10,8 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage(
     NAME rmagine
-    GITHUB_REPOSITORY uos/rmagine
-    VERSION 2.3.0
+    GIT_REPOSITORY git@gitlab.informatik.uni-osnabrueck.de:ba_fageers/rmagine.git
+    GIT_TAG testTag
     OPTIONS
         "BUILD_TESTS OFF"
         "BUILD_TOOLS OFF"
@@ -49,5 +49,16 @@ target_link_libraries(rmagine_viewer_optix
     rmagine::core
     rmagine::cuda
     rmagine::optix
+    rmagine::ouster
+    portable_file_dialogs)
+
+add_executable(rmagine_multi_viewer src/rmagine_multi_viewer.cpp)
+target_link_libraries(rmagine_multi_viewer
+    polyscope
+    rmagine::core
+    rmagine::embree
+    rmagine::cuda
+    rmagine::optix
+    rmagine::vulkan
     rmagine::ouster
     portable_file_dialogs)
