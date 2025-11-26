@@ -182,10 +182,6 @@ int main(int argc, char** argv)
   polyscope::PointCloud* poly_pcl_optix = nullptr;
   polyscope::PointCloud* poly_pcl_vulkan = nullptr;
 
-  // update scanner transform
-  // Transform from sensor to world, i.e. pose of the sensor
-  rm::Transform Tsw = rm::Transform::Identity();
-
 
 
   while(!polyscope::windowRequestsClose())
@@ -198,33 +194,32 @@ int main(int argc, char** argv)
     rm::Transform Tsw_optix = rm::Transform::Identity();
     rm::Transform Tsw_vulkan = rm::Transform::Identity();
 
+    glm::vec3 offset = {0,0,1};
+
     if(poly_pcl_embree)
-    {      
+    {
       rm::Matrix4x4 M = rm_from_glm(poly_pcl_embree->getTransform());
       rm::Vector3 s; // scale. not used
       rm::decompose(M, Tsw_embree, s);
-      // poly_pcl->rescaleToUnit(); // gives weird results
-      // better:
+      
       poly_pcl_embree->setTransform(glm_from_rm(Tsw_embree));
     }
 
     if(poly_pcl_optix)
-    {      
+    {
       rm::Matrix4x4 M = rm_from_glm(poly_pcl_optix->getTransform());
       rm::Vector3 s; // scale. not used
       rm::decompose(M, Tsw_optix, s);
-      // poly_pcl->rescaleToUnit(); // gives weird results
-      // better:
+      
       poly_pcl_optix->setTransform(glm_from_rm(Tsw_optix));
     }
 
     if(poly_pcl_vulkan)
-    {      
+    {
       rm::Matrix4x4 M = rm_from_glm(poly_pcl_vulkan->getTransform());
       rm::Vector3 s; // scale. not used
       rm::decompose(M, Tsw_vulkan, s);
-      // poly_pcl->rescaleToUnit(); // gives weird results
-      // better:
+      
       poly_pcl_vulkan->setTransform(glm_from_rm(Tsw_vulkan));
     }
 
@@ -243,13 +238,13 @@ int main(int argc, char** argv)
       ResultTOptix results_optix;
       ResultTVulkan results_vulkan;
 
-      results_embree = rm_spherical_sim_embree.simulate<ResultTEmbree>(Tsw);
+      results_embree = rm_spherical_sim_embree.simulate<ResultTEmbree>(Tsw_embree);
 
       rm::resize_memory_bundle<rm::VRAM_CUDA, ResultTOptix>(results_optix, spherical_model.getWidth(), spherical_model.getHeight(), 1);
-      rm_spherical_sim_optix.simulate<ResultTOptix>(Tsw, results_optix);
+      rm_spherical_sim_optix.simulate<ResultTOptix>(Tsw_optix, results_optix);
 
       rm::resize_memory_bundle<rm::DEVICE_LOCAL_VULKAN,ResultTVulkan>(results_vulkan, spherical_model.getWidth(), spherical_model.getHeight(), 1);
-      rm_spherical_sim_vulkan.simulate<ResultTVulkan>(Tsw, results_vulkan);
+      rm_spherical_sim_vulkan.simulate<ResultTVulkan>(Tsw_vulkan, results_vulkan);
 
 
 
