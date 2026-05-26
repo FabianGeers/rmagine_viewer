@@ -10,8 +10,8 @@ include(cmake/CPM.cmake)
 
 CPMAddPackage(
     NAME rmagine
-    GIT_REPOSITORY git@gitlab.informatik.uni-osnabrueck.de:ba_fageers/rmagine.git
-    GIT_TAG testTag
+    GITHUB_REPOSITORY uos/rmagine
+    VERSION 2.4.0
     OPTIONS
         "BUILD_TESTS OFF"
         "BUILD_TOOLS OFF"
